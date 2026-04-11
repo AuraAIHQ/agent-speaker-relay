@@ -1,0 +1,67 @@
+# Agent Speaker Relay - Docker Image
+# Based on strfry with custom configuration
+
+FROM ubuntu:22.04 as builder
+
+# Install build dependencies
+RUN apt-get update && apt-get install -y \
+    git \
+    build-essential \
+    cmake \
+    pkg-config \
+    liblmdb-dev \
+    libsecp256k1-dev \
+    libssl-dev \
+    zlib1g-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy source
+WORKDIR /build
+COPY . .
+
+# Initialize submodules and build
+RUN git submodule update --init && \
+    mkdir -p build && \
+    cd build && \
+    cmake .. -DCMAKE_BUILD_TYPE=Release && \
+    make -j$(nproc)
+
+# Runtime image
+FROM ubuntu:22.04
+
+# Install runtime dependencies
+RUN apt-get update && apt-get install -y \
+    liblmdb0 \
+    libsecp256k1-1 \
+    libssl3 \
+    zlib1g \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Create non-root user
+RUN useradd -m -s /bin/bash strfry
+
+# Copy binary
+COPY --from=builder /build/build/strfry /usr/local/bin/strfry
+RUN chmod +x /usr/local/bin/strfry
+
+# Copy default config
+COPY strfry.conf /app/strfry.conf.default
+
+# Create data directory
+RUN mkdir -p /app/strfry-db && chown -R strfry:strfry /app
+
+# Switch to non-root user
+USER strfry
+WORKDIR /app
+
+# Expose port
+EXPOSE 7777
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost:7777/health || exit 1
+
+# Default command
+ENTRYPOINT ["strfry"]
+CMD ["--config", "/app/strfry.conf", "relay"]

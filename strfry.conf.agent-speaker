@@ -1,0 +1,101 @@
+# Agent Speaker Relay Configuration
+# Optimized for small team communication and agent coordination
+
+[relay]
+# Relay metadata
+name = "Agent Speaker Relay"
+description = "Private relay for agent communication and team coordination"
+nip11Revision = "1.0.0"
+
+# Your contact/pubkey (optional, for NIP-11)
+# pubkey = "your-pubkey-hex"
+# contact = "your-email@example.com"
+
+# Network settings
+[relay.network]
+# Bind address
+bind = "0.0.0.0"
+port = 7777
+
+# Real IP header (useful behind Cloudflare)
+realIpHeader = "X-Forwarded-For"
+
+# Maximum connections
+maxConnections = 1000
+
+# Event filtering (optional security)
+# Uncomment to only accept specific event kinds
+[filter]
+# Only accept these event kinds
+# kinds = [0, 3, 30078]
+
+# Require specific tags
+# tags = [["c", "agent"]]
+
+# Maximum event size (bytes)
+maxEventSize = 65536
+
+# Maximum subscription filters per client
+maxFilterSize = 1000
+
+# Rate limiting
+[limits]
+# Events per second per IP
+eventsPerSecond = 10
+
+# Subscriptions per IP
+maxSubsPerIp = 20
+
+# Concurrent connections per IP
+maxConnsPerIp = 5
+
+# Whitelist (optional - for private relay)
+# When enabled, only these pubkeys can publish
+#[whitelist]
+#enabled = true
+#pubkeys = [
+#    "your-pubkey-hex-here",
+#    "colleague-pubkey-hex-here"
+#]
+
+# Blacklist (optional)
+#[blacklist]
+#pubkeys = [
+#    "spam-pubkey-hex-here"
+#]
+
+# Message retention policy
+[retention]
+# Maximum age in seconds (30 days = 2592000)
+maxAge = 2592000
+
+# Maximum number of events per kind per author
+#maxEventsPerAuthor = 1000
+
+# Database settings
+[db]
+# Database path
+path = "/app/strfry-db"
+
+# Maximum size (bytes)
+# 1GB = 1073741824
+maxSize = 1073741824
+
+# Logging
+[logging]
+# Log level: trace, debug, info, warn, error
+level = "info"
+
+# Log to file (if not set, logs to stdout)
+# file = "/app/strfry.log"
+
+# Metrics (optional)
+#[metrics]
+#enabled = true
+#bind = "127.0.0.1"
+#port = 7778
+
+# Plugins (placeholder for future customizations)
+#[plugins]
+# Directory for plugins
+#path = "/app/plugins"
