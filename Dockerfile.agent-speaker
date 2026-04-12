@@ -7,6 +7,7 @@
 # Build: docker build -f Dockerfile.agent-speaker -t mushroomdao/agent-speaker-relay:latest .
 # Run:   docker run -d -p 7777:7777 mushroomdao/agent-speaker-relay:latest
 
+# Alpine-based build (smaller, official approach)
 FROM alpine:3.18 AS builder
 
 WORKDIR /build
