@@ -8,8 +8,8 @@
 
 | 方案 | 适用场景 | 优点 | 缺点 | 复杂度 |
 |------|---------|------|------|--------|
-| **A. Docker + 现有 Tunnel** | 已有 Cloudflare Tunnel | 复用配置，统一管理 | 需编辑 YAML | ⭐⭐ |
-| **B. Docker + 新建 Tunnel** | 无现有 Tunnel | 隔离配置，独立管理 | Tunnel 数量增多 | ⭐⭐⭐ |
+| **A. Docker Compose + 现有 Tunnel** | 已有 Cloudflare Tunnel | 复用配置，统一管理 | 需编辑 YAML | ⭐⭐ |
+| **B. Docker Compose + 新建 Tunnel** | 无现有 Tunnel | 隔离配置，独立管理 | Tunnel 数量增多 | ⭐⭐⭐ |
 | **C. 裸机部署** | 无 Docker | 资源占用低 | 配置复杂 | ⭐⭐⭐⭐ |
 | **D. VPS 直连** | 有公网 IP | 简单直接 | 暴露端口 | ⭐ |
 
@@ -17,9 +17,9 @@
 
 ## 方案 A：复用现有 Tunnel（推荐）
 
-如果你已经有 Cloudflare Tunnel（如图中 `c545ff0c-...`），**推荐复用**。
+如果你已经有 Cloudflare Tunnel，**推荐复用**。
 
-### 查看现有 Tunnel
+### 1. 查看现有 Tunnel
 
 ```bash
 # 列出所有 tunnel
@@ -28,40 +28,33 @@ cloudflared tunnel list
 # 输出示例：
 # ID                    NAME           CREATED              CONNECTIONS
 # c545ff0c-...          aastar-relay   2024-01-15 10:00:00  1xSJC, 1xHKG
-# xxxx-xxxx-xxxx-xxxx   my-other-app   2024-01-10 09:00:00  2xSJC
+# xxxx-xxxx-xxxx-xxxx   other-app      2024-01-10 09:00:00  2xSJC
 ```
 
-### 找到配置文件
+### 2. 查看现有配置
 
 ```bash
-# 查看 tunnel 配置位置（通常是 ~/.cloudflared/）
+# 找到所有配置文件
 ls ~/.cloudflared/*.yml ~/.cloudflared/config.yml 2>/dev/null
 
-# 或者找到特定 tunnel 的凭证
-cat ~/.cloudflared/c545ff0c-6114-42e1-bea4-241836c85511.json | jq '.TunnelID'
+# 查看现有 ingress 规则
+cat ~/.cloudflared/config.yml
 ```
 
-### 添加 Agent Relay 到现有 Tunnel
+### 3. 添加 Agent Relay 到现有 Tunnel
 
-编辑现有 `config.yml`：
-
-```bash
-# 找到并编辑配置文件
-nano ~/.cloudflared/config.yml
-```
-
-在 `ingress:` 部分**添加新的规则**（注意顺序，默认规则放最后）：
+编辑你的主配置文件（通常是 `~/.cloudflared/config.yml`）：
 
 ```yaml
 tunnel: c545ff0c-6114-42e1-bea4-241836c85511
 credentials-file: /Users/nicolasshuaishuai/.cloudflared/c545ff0c-6114-42e1-bea4-241836c85511.json
 
 ingress:
-  # 你现有的服务
+  # 你现有的其他服务
   - hostname: app.aastar.io
     service: http://localhost:3000
   
-  # ✅ 新增：Agent Relay
+  # ✅ 新增：Agent Relay（插入到默认规则之前）
   - hostname: relay.aastar.io
     service: http://localhost:7777
     originRequest:
@@ -72,37 +65,67 @@ ingress:
   - service: http_status:404
 ```
 
-### 添加 DNS 记录
+### 4. 添加 DNS 记录
 
 ```bash
 # 复用同一个 tunnel 添加域名
 cloudflared tunnel route dns aastar-relay relay.aastar.io
 ```
 
-### 重启 Tunnel
+### 5. 准备 Relay 目录和配置
 
 ```bash
-# 找到并重启 tunnel 进程
-# 方式 1：如果手动运行
-Ctrl+C  # 停止现有
-cloudflared tunnel run aastar-relay  # 重新运行
+# 创建工作目录
+mkdir -p ~/agent-relay && cd ~/agent-relay
 
-# 方式 2：如果是服务
-launchctl unload ~/Library/LaunchAgents/com.cloudflared.plist 2>/dev/null
-launchctl load ~/Library/LaunchAgents/com.cloudflared.plist
+# 下载配置文件
+curl -O https://raw.githubusercontent.com/MushroomDAO/agent-speaker-relay/agent-speaker/strfry.aastar.conf
+curl -O https://raw.githubusercontent.com/MushroomDAO/agent-speaker-relay/agent-speaker/docker-compose.aastar.yml
 
-# 方式 3：强制重启
-killall cloudflared
-cloudflared tunnel run aastar-relay
+# 创建数据目录
+mkdir -p data logs
 ```
 
-### 验证
+### 6. 启动 Relay（Docker Compose）
 
 ```bash
-# 测试本地 relay
+# 启动 relay（使用 docker-compose）
+docker-compose -f docker-compose.aastar.yml up -d
+
+# 查看状态
+docker-compose -f docker-compose.aastar.yml ps
+docker logs -f aastar-relay
+```
+
+### 7. 优雅重启所有 Tunnel
+
+```bash
+# 方式 1：如果有 LaunchDaemon 配置
+launchctl unload ~/Library/LaunchAgents/com.cloudflared.plist 2>/dev/null || true
+sleep 2
+launchctl load ~/Library/LaunchAgents/com.cloudflared.plist
+
+# 方式 2：手动进程管理（找到所有 cloudflared 进程并重启）
+# 先停止所有
+echo "Stopping all cloudflared processes..."
+killall cloudflared 2>/dev/null || true
+sleep 2
+
+# 重新启动（加载新配置）
+echo "Starting cloudflared with updated config..."
+cloudflared tunnel run aastar-relay &
+
+# 方式 3：使用 systemd（Linux）或 LaunchDaemon（推荐用于生产）
+# 见下面的 "开机自启" 章节
+```
+
+### 8. 验证
+
+```bash
+# 本地测试
 curl http://localhost:7777
 
-# 测试公网地址
+# 公网测试（等 10-30 秒 DNS 生效）
 curl https://relay.aastar.io
 
 # WebSocket 测试
@@ -111,12 +134,125 @@ wscat -c wss://relay.aastar.io
 
 ---
 
-## 方案 B：新建独立 Tunnel
+## 开机自启配置（推荐）
 
-如果你想让 Agent Relay 有独立的 Tunnel ID：
+### macOS LaunchDaemon（管理所有 Tunnel）
+
+创建统一的 LaunchDaemon 来管理所有服务：
 
 ```bash
-# 使用我们的自动部署脚本
+# 创建 plist 文件
+cat > ~/Library/LaunchAgents/com.aastar.services.plist << 'EOF'
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.aastar.services</string>
+    
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/sh</string>
+        <string>-c</string>
+        <string>
+            # Start Docker Compose services
+            cd /Users/nicolasshuaishuai/agent-relay && /usr/local/bin/docker-compose -f docker-compose.aastar.yml up -d;
+            # Start Cloudflare Tunnel
+            /opt/homebrew/bin/cloudflared tunnel run aastar-relay
+        </string>
+    </array>
+    
+    <key>RunAtLoad</key>
+    <true/>
+    
+    <key>KeepAlive</key>
+    <dict>
+        <key>SuccessfulExit</key>
+        <false/>
+    </dict>
+    
+    <key>StandardOutPath</key>
+    <string>/Users/nicolasshuaishuai/agent-relay/logs/service.log</string>
+    
+    <key>StandardErrorPath</key>
+    <string>/Users/nicolasshuaishuai/agent-relay/logs/service.error.log</string>
+    
+    <key>WorkingDirectory</key>
+    <string>/Users/nicolasshuaishuai/agent-relay</string>
+</dict>
+</plist>
+EOF
+
+# 加载
+launchctl load ~/Library/LaunchAgents/com.aastar.services.plist
+
+# 验证
+launchctl list | grep aastar
+```
+
+### 控制脚本
+
+创建统一的管理脚本：
+
+```bash
+# start-all.sh
+cat > ~/agent-relay/start-all.sh << 'EOF'
+#!/bin/bash
+cd "$(dirname "$0")"
+
+# Start Relay
+echo "Starting Relay..."
+docker-compose -f docker-compose.aastar.yml up -d
+
+# Start Tunnel
+echo "Starting Cloudflare Tunnel..."
+killall cloudflared 2>/dev/null || true
+sleep 2
+nohup cloudflared tunnel run aastar-relay > ./logs/tunnel.log 2>&1 &
+
+echo "All services started!"
+echo "Relay: http://localhost:7777"
+echo "Public: wss://relay.aastar.io"
+EOF
+
+chmod +x ~/agent-relay/start-all.sh
+
+# stop-all.sh
+cat > ~/agent-relay/stop-all.sh << 'EOF'
+#!/bin/bash
+cd "$(dirname "$0")"
+
+echo "Stopping Relay..."
+docker-compose -f docker-compose.aastar.yml down
+
+echo "Stopping Tunnel..."
+killall cloudflared 2>/dev/null || true
+
+echo "All services stopped!"
+EOF
+
+chmod +x ~/agent-relay/stop-all.sh
+
+# restart-all.sh
+cat > ~/agent-relay/restart-all.sh << 'EOF'
+#!/bin/bash
+cd "$(dirname "$0")"
+./stop-all.sh
+sleep 2
+./start-all.sh
+EOF
+
+chmod +x ~/agent-relay/restart-all.sh
+```
+
+---
+
+## 方案 B：新建独立 Tunnel
+
+如果你想完全隔离（不推荐，除非有特殊需求）：
+
+```bash
+# 使用自动部署脚本
 curl -fsSL -o deploy-aastar.sh \
   https://raw.githubusercontent.com/MushroomDAO/agent-speaker-relay/agent-speaker/deploy-aastar.sh
 chmod +x deploy-aastar.sh
@@ -129,10 +265,6 @@ chmod +x deploy-aastar.sh
 
 ## 方案 C：裸机部署（无 Docker）
 
-适用于资源受限或不想用 Docker 的场景。
-
-### 1. 安装依赖
-
 ```bash
 # macOS
 brew install cmake pkg-config lmdb secp256k1 openssl zlib
@@ -144,69 +276,34 @@ git submodule update --init
 mkdir build && cd build
 cmake .. -DCMAKE_BUILD_TYPE=Release
 make -j4
-
-# 安装
 sudo make install
-```
-
-### 2. 配置并运行
-
-```bash
-# 下载我们的配置
-curl -O https://raw.githubusercontent.com/MushroomDAO/agent-speaker-relay/agent-speaker/strfry.aastar.conf
-mv strfry.aastar.conf /usr/local/etc/strfry.conf
 
 # 运行
-strfry --config /usr/local/etc/strfry.conf relay
+strfry --config ~/strfry.aastar.conf relay
 ```
 
 ---
 
 ## 方案 D：VPS 直连（公网 IP）
 
-适用于有公网 IP 的服务器，最简单：
+最简单，但有公网 IP 暴露风险：
 
 ```bash
-# 直接暴露端口
 docker run -d \
   --name agent-relay \
   -p 7777:7777 \
   -v ~/relay-data:/app/strfry-db \
   hoytech/strfry:latest
-
-# 访问 wss://your-vps-ip:7777
 ```
-
-**注意**：需要防火墙开放 7777 端口。
 
 ---
 
-## 🔧 配置文件详解
+## 🔧 多 Tunnel 管理建议
 
-### strfry.aastar.conf 关键配置
-
-```ini
-[relay.network]
-bind = "127.0.0.1"  # 只绑定 localhost，安全
-port = 7777
-
-[limits]
-eventsPerSecond = 5      # 限制事件频率
-maxConnsPerIp = 3        # 限制单 IP 连接数
-
-[retention]
-maxAge = 2592000         # 30天消息保留
-
-[db]
-maxSize = 536870912      # 500MB 数据库限制
-```
-
-### 多 Tunnel 管理建议
-
-如果你有多个 tunnel，建议统一配置：
+如果你有多个 tunnel，建议**合并到一个统一的配置**中：
 
 ```yaml
-# ~/.cloudflared/config.yml
+# ~/.cloudflared/config.yml（单一入口）
 tunnel: <你的主-tunnel-id>
 credentials-file: ~/.cloudflared/<id>.json
 
@@ -219,82 +316,74 @@ ingress:
   - hostname: api.aastar.io
     service: http://localhost:8080
   
-  # ✅ Agent Relay
+  # Agent Relay
   - hostname: relay.aastar.io
     service: http://localhost:7777
     originRequest:
       noTLSVerify: true
   
   # 其他服务...
-  - hostname: xxx.aastar.io
-    service: http://localhost:xxxx
   
-  # 默认
+  # 默认规则
   - service: http_status:404
 ```
+
+然后只运行一个 tunnel 进程管理所有服务。
 
 ---
 
 ## 🐛 故障排查
 
-### Tunnel 连接失败
+### 查看所有 Tunnel 状态
 
 ```bash
-# 检查 tunnel 状态
-cloudflared tunnel info <tunnel-id>
-
-# 查看日志
-cloudflared tunnel run <tunnel-name> --log-level debug
-
-# 检查 DNS
-nslookup relay.aastar.io
+cloudflared tunnel list
+cloudflared tunnel info <id>
 ```
 
-### Relay 无法启动
+### 优雅重启所有服务
 
 ```bash
-# 检查端口占用
+# 1. 停止
+docker-compose -f docker-compose.aastar.yml down
+killall cloudflared
+
+# 2. 等待
+sleep 3
+
+# 3. 启动
+docker-compose -f docker-compose.aastar.yml up -d
+cloudflared tunnel run <tunnel-name> &
+```
+
+### 检查端口占用
+
+```bash
 lsof -i :7777
-
-# 查看日志
-docker logs aastar-relay
-
-# 检查配置语法
-cat strfry.aastar.conf | grep -v "^#" | grep -v "^$"
-```
-
-### 客户端连不上
-
-```bash
-# 本地测试
-curl http://localhost:7777
-
-# Tunnel 测试
-curl https://relay.aastar.io
-
-# WebSocket 测试
-wscat -c wss://relay.aastar.io
+netstat -an | grep 7777
 ```
 
 ---
 
 ## 📋 快速检查清单
 
-- [ ] Tunnel 配置文件已更新
+- [ ] Tunnel 配置文件已更新（添加 relay.aastar.io）
 - [ ] DNS 记录已添加
-- [ ] relay.aastar.io 可解析
-- [ ] Docker 容器运行中
-- [ ] 本地端口 7777 可访问
-- [ ] 公网 wss://relay.aastar.io 可访问
-- [ ] 客户端可发送/接收消息
+- [ ] relay.aastar.io 可解析（`nslookup relay.aastar.io`）
+- [ ] Docker Compose 文件已下载
+- [ ] Relay 容器运行中（`docker-compose ps`）
+- [ ] 本地端口 7777 可访问（`curl localhost:7777`）
+- [ ] 公网可访问（`curl https://relay.aastar.io`）
+- [ ] WebSocket 可连接（`wscat -c wss://relay.aastar.io`）
 
 ---
 
-## 💡 推荐做法总结
+## 💡 推荐做法（你的情况）
 
-1. **已有 Tunnel** → **方案 A**（复用，统一管理）
-2. **无 Tunnel** → **方案 B**（自动化脚本）
-3. **资源受限** → **方案 C**（裸机编译）
-4. **有公网 IP** → **方案 D**（最简单）
+1. **使用现有的 `aastar-relay` tunnel**
+2. **编辑现有 `~/.cloudflared/config.yml`** 添加 relay 规则
+3. **使用 Docker Compose** 启动 relay（不是裸命令）
+4. **优雅重启**：先停所有，再启动所有
+5. **配置 LaunchDaemon** 实现开机自启
 
-你的情况（已有 Tunnel）→ **推荐方案 A**
+**不要**新建 tunnel ID，复用现有的即可。
