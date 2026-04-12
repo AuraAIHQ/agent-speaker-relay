@@ -20,13 +20,12 @@ RUN apt-get update && apt-get install -y \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy source code (from our forked repo)
+# Clone strfry source (with submodules)
 WORKDIR /build
-COPY . .
+RUN git clone --recursive --depth 1 https://github.com/hoytech/strfry.git .
 
-# Initialize submodules and build
-RUN git submodule update --init && \
-    mkdir -p build && \
+# Build
+RUN mkdir -p build && \
     cd build && \
     cmake .. -DCMAKE_BUILD_TYPE=Release && \
     make -j$(nproc)
@@ -53,7 +52,7 @@ RUN useradd -m -s /bin/bash strfry
 COPY --from=builder /build/build/strfry /usr/local/bin/strfry
 RUN chmod +x /usr/local/bin/strfry
 
-# Copy default config (will be overridden by volume mount)
+# Copy default config (from local context)
 COPY strfry.aastar.conf /app/strfry.conf.default
 
 # Create data directory
