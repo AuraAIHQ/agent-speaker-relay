@@ -1,6 +1,10 @@
 # Agent Speaker Relay - Dockerfile
-# Based on our fork: https://github.com/MushroomDAO/agent-speaker-relay
-# This ensures our customizations are included in the build
+# Based on strfry with our custom configurations
+# 
+# This Dockerfile:
+# 1. Clones upstream strfry source code
+# 2. Builds it with our optimizations
+# 3. Includes our custom configuration files
 #
 # Build: docker build -f Dockerfile.agent-speaker -t mushroomdao/agent-speaker-relay:latest .
 # Run:   docker run -d -p 7777:7777 mushroomdao/agent-speaker-relay:latest
@@ -20,12 +24,11 @@ RUN apt-get update && apt-get install -y \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Clone OUR fork (not upstream)
-# This ensures any customizations in our repo are included
+# Clone upstream strfry source (our fork only has configs, not the full source)
 WORKDIR /build
-RUN git clone --recursive --depth 1 https://github.com/MushroomDAO/agent-speaker-relay.git .
+RUN git clone --recursive --depth 1 https://github.com/hoytech/strfry.git .
 
-# Build
+# Build strfry
 RUN mkdir -p build && \
     cd build && \
     cmake .. -DCMAKE_BUILD_TYPE=Release && \
@@ -53,8 +56,9 @@ RUN useradd -m -s /bin/bash strfry
 COPY --from=builder /build/build/strfry /usr/local/bin/strfry
 RUN chmod +x /usr/local/bin/strfry
 
-# Copy default config from our repo
-COPY --from=builder /build/strfry.aastar.conf /app/strfry.conf.default
+# Copy our custom configuration (from build context)
+# This allows users to override with their own config via volume mount
+COPY strfry.aastar.conf /app/strfry.conf.default
 
 # Create data directory
 RUN mkdir -p /app/strfry-db && chown -R strfry:strfry /app
