@@ -6,7 +6,7 @@
 # Build: docker build -f Dockerfile.agent-speaker -t mushroomdao/agent-speaker-relay:latest .
 # Run:   docker run -d -p 7777:7777 mushroomdao/agent-speaker-relay:latest
 
-FROM ubuntu:22.04 as builder
+FROM ubuntu:22.04 AS builder
 
 # Install build dependencies
 RUN apt-get update && apt-get install -y \
@@ -35,10 +35,9 @@ RUN make -j$(nproc)
 # Runtime image
 FROM ubuntu:22.04
 
-# Install runtime dependencies
+# Install runtime dependencies (libsecp256k1 copied from builder)
 RUN apt-get update && apt-get install -y \
     liblmdb0 \
-    libsecp256k1-1 \
     libssl3 \
     zlib1g \
     libzstd1 \
@@ -48,9 +47,13 @@ RUN apt-get update && apt-get install -y \
 # Create non-root user
 RUN useradd -m -s /bin/bash strfry
 
-# Copy binary from builder
-COPY --from=builder /build/build/strfry /usr/local/bin/strfry
+# Copy binary and libraries from builder
+COPY --from=builder /build/strfry /usr/local/bin/strfry
 RUN chmod +x /usr/local/bin/strfry
+
+# Copy libsecp256k1 from builder (ARM64 doesn't have apt package)
+COPY --from=builder /usr/lib/*/libsecp256k1.so* /usr/local/lib/
+RUN ldconfig
 
 # Copy default config from build context
 COPY strfry.aastar.conf /app/strfry.conf.default
