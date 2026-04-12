@@ -1,6 +1,6 @@
 # Agent Speaker Relay - Dockerfile
-# Multi-arch support: AMD64 and ARM64
-# Based on strfry (https://github.com/hoytech/strfry)
+# Based on our fork: https://github.com/MushroomDAO/agent-speaker-relay
+# This ensures our customizations are included in the build
 #
 # Build: docker build -f Dockerfile.agent-speaker -t mushroomdao/agent-speaker-relay:latest .
 # Run:   docker run -d -p 7777:7777 mushroomdao/agent-speaker-relay:latest
@@ -20,9 +20,10 @@ RUN apt-get update && apt-get install -y \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Clone strfry source (with submodules)
+# Clone OUR fork (not upstream)
+# This ensures any customizations in our repo are included
 WORKDIR /build
-RUN git clone --recursive --depth 1 https://github.com/hoytech/strfry.git .
+RUN git clone --recursive --depth 1 https://github.com/MushroomDAO/agent-speaker-relay.git .
 
 # Build
 RUN mkdir -p build && \
@@ -41,7 +42,7 @@ RUN apt-get update && apt-get install -y \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy libraries from builder (architecture-agnostic)
+# Copy libraries from builder
 COPY --from=builder /usr/lib/*/libsecp256k1.so* /usr/local/lib/
 RUN ldconfig
 
@@ -52,8 +53,8 @@ RUN useradd -m -s /bin/bash strfry
 COPY --from=builder /build/build/strfry /usr/local/bin/strfry
 RUN chmod +x /usr/local/bin/strfry
 
-# Copy default config (from local context)
-COPY strfry.aastar.conf /app/strfry.conf.default
+# Copy default config from our repo
+COPY --from=builder /build/strfry.aastar.conf /app/strfry.conf.default
 
 # Create data directory
 RUN mkdir -p /app/strfry-db && chown -R strfry:strfry /app
