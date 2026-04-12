@@ -26,10 +26,7 @@ RUN apt-get update && apt-get install -y \
 WORKDIR /build
 COPY . .
 
-# Initialize submodules (golpe, negentropy)
-RUN git submodule update --init --recursive
-
-# Build strfry
+# Build strfry (submodules already initialized locally and copied)
 RUN make -j$(nproc)
 
 # Runtime image
