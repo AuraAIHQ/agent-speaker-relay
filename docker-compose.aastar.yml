@@ -1,11 +1,15 @@
 # Docker Compose for AASTAR Relay
 # Usage: docker-compose -f docker-compose.aastar.yml up -d
-
-version: '3.8'
+#
+# This uses local build from our forked repository:
+# https://github.com/MushroomDAO/agent-speaker-relay
 
 services:
   relay:
-    image: hoytech/strfry:latest
+    build:
+      context: .
+      dockerfile: Dockerfile.agent-speaker
+    image: mushroomdao/agent-speaker-relay:latest
     container_name: aastar-relay
     restart: unless-stopped
     ports:
@@ -37,7 +41,7 @@ services:
   # Optional: tunnel service (alternative to system-level cloudflared)
   # Uncomment if you want tunnel in Docker instead of native service
   # tunnel:
-  #   image: cloudflare/cloudflared:latest
+  #   image: docker.io/cloudflare/cloudflared:latest
   #   container_name: aastar-tunnel
   #   restart: unless-stopped
   #   command: tunnel run

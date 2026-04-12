@@ -1,5 +1,9 @@
-# Agent Speaker Relay - Docker Image
-# Based on strfry with custom configuration
+# Agent Speaker Relay - Dockerfile
+# Based on strfry (https://github.com/hoytech/strfry)
+# Forked to MushroomDAO/agent-speaker-relay for customization
+#
+# Build: docker build -f Dockerfile.agent-speaker -t mushroomdao/agent-speaker-relay:latest .
+# Run:   docker run -d -p 7777:7777 mushroomdao/agent-speaker-relay:latest
 
 FROM ubuntu:22.04 as builder
 
@@ -13,9 +17,10 @@ RUN apt-get update && apt-get install -y \
     libsecp256k1-dev \
     libssl-dev \
     zlib1g-dev \
+    curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy source
+# Copy source code (from our forked repo)
 WORKDIR /build
 COPY . .
 
@@ -41,12 +46,12 @@ RUN apt-get update && apt-get install -y \
 # Create non-root user
 RUN useradd -m -s /bin/bash strfry
 
-# Copy binary
+# Copy binary from builder
 COPY --from=builder /build/build/strfry /usr/local/bin/strfry
 RUN chmod +x /usr/local/bin/strfry
 
-# Copy default config
-COPY strfry.conf /app/strfry.conf.default
+# Copy default config (will be overridden by volume mount)
+COPY strfry.aastar.conf /app/strfry.conf.default
 
 # Create data directory
 RUN mkdir -p /app/strfry-db && chown -R strfry:strfry /app

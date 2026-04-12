@@ -1,0 +1,17 @@
+# Docker ignore for faster builds
+.git
+.gitignore
+*.md
+*.yml
+*.yaml
+!strfry.aastar.conf
+data/
+logs/
+backups/
+*.log
+.DS_Store
+.dockerignore
+Dockerfile*
+deploy*.sh
+find-cloudflared.sh
+com.*.plist
