@@ -1,6 +1,6 @@
 # Agent Speaker Relay - Dockerfile
+# Multi-arch support: AMD64 and ARM64
 # Based on strfry (https://github.com/hoytech/strfry)
-# Forked to MushroomDAO/agent-speaker-relay for customization
 #
 # Build: docker build -f Dockerfile.agent-speaker -t mushroomdao/agent-speaker-relay:latest .
 # Run:   docker run -d -p 7777:7777 mushroomdao/agent-speaker-relay:latest
@@ -37,11 +37,14 @@ FROM ubuntu:22.04
 # Install runtime dependencies
 RUN apt-get update && apt-get install -y \
     liblmdb0 \
-    libsecp256k1-1 \
     libssl3 \
     zlib1g \
     curl \
     && rm -rf /var/lib/apt/lists/*
+
+# Copy libraries from builder (architecture-agnostic)
+COPY --from=builder /usr/lib/*/libsecp256k1.so* /usr/local/lib/
+RUN ldconfig
 
 # Create non-root user
 RUN useradd -m -s /bin/bash strfry
