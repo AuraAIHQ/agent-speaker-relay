@@ -32,8 +32,8 @@ RUN apk --no-cache add \
 # Copy source from build context (submodules must be initialized locally)
 COPY . .
 
-# Build strfry
-RUN make -j$(nproc)
+# Build strfry (limit parallelism to avoid OOM on smaller systems)
+RUN make -j2
 
 # Runtime image
 FROM alpine:3.18

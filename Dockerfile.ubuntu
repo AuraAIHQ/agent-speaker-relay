@@ -29,8 +29,8 @@ RUN apt-get update && apt-get install -y \
 WORKDIR /build
 COPY . .
 
-# Build strfry (submodules already initialized locally and copied)
-RUN make -j$(nproc)
+# Build strfry (limit parallelism to avoid OOM on smaller systems)
+RUN make -j2
 
 # Runtime image
 FROM ubuntu:22.04
