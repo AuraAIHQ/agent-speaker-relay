@@ -5,6 +5,7 @@
 *.yml
 *.yaml
 !strfry.aastar.conf
+!golpe.yaml
 data/
 logs/
 backups/
