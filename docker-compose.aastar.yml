@@ -1,0 +1,48 @@
+# Docker Compose for AASTAR Relay
+# Usage: docker-compose -f docker-compose.aastar.yml up -d
+
+version: '3.8'
+
+services:
+  relay:
+    image: hoytech/strfry:latest
+    container_name: aastar-relay
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:7777:7777"  # Only bind to localhost for security
+    volumes:
+      - ./data:/app/strfry-db
+      - ./strfry.aastar.conf:/app/strfry.conf:ro
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:7777 || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    # Resource limits for Mac Mini
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+        reservations:
+          cpus: '0.5'
+          memory: 256M
+
+  # Optional: tunnel service (alternative to system-level cloudflared)
+  # Uncomment if you want tunnel in Docker instead of native service
+  # tunnel:
+  #   image: cloudflare/cloudflared:latest
+  #   container_name: aastar-tunnel
+  #   restart: unless-stopped
+  #   command: tunnel run
+  #   environment:
+  #     - TUNNEL_TOKEN=${TUNNEL_TOKEN}
+  #   depends_on:
+  #     - relay
+  #   network_mode: host
