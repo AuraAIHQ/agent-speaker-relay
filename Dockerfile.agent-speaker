@@ -1,75 +1,69 @@
 # Agent Speaker Relay - Dockerfile
-# Based on strfry with our custom configurations
+# Based on strfry with AASTAR custom configurations
 # 
 # Build context should be the root of our forked repository
+# Submodules must be initialized locally before building
 #
 # Build: docker build -f Dockerfile.agent-speaker -t mushroomdao/agent-speaker-relay:latest .
 # Run:   docker run -d -p 7777:7777 mushroomdao/agent-speaker-relay:latest
 
-FROM ubuntu:22.04 AS builder
+FROM alpine:3.18 AS builder
+
+WORKDIR /build
 
 # Install build dependencies
-RUN apt-get update && apt-get install -y \
+RUN apk --no-cache add \
+    linux-headers \
     git \
-    build-essential \
+    g++ \
     make \
-    pkg-config \
-    liblmdb-dev \
-    libsecp256k1-dev \
-    libssl-dev \
-    zlib1g-dev \
-    libzstd-dev \
     perl \
-    flatbuffers-compiler \
-    libflatbuffers-dev \
-    && rm -rf /var/lib/apt/lists/*
+    pkgconfig \
+    libtool \
+    ca-certificates \
+    libressl-dev \
+    zlib-dev \
+    lmdb-dev \
+    flatbuffers-dev \
+    libsecp256k1-dev \
+    zstd-dev
 
-# Copy source from build context (our forked repo)
-WORKDIR /build
+# Copy source from build context (submodules must be initialized locally)
 COPY . .
 
-# Build strfry (submodules already initialized locally and copied)
+# Build strfry
 RUN make -j$(nproc)
 
 # Runtime image
-FROM ubuntu:22.04
+FROM alpine:3.18
 
-# Install runtime dependencies (libsecp256k1 copied from builder)
-RUN apt-get update && apt-get install -y \
-    liblmdb0 \
-    libssl3 \
-    zlib1g \
-    libzstd1 \
-    curl \
-    && rm -rf /var/lib/apt/lists/*
+WORKDIR /app
 
-# Create non-root user
-RUN useradd -m -s /bin/bash strfry
+# Install runtime dependencies
+RUN apk --no-cache add \
+    lmdb \
+    flatbuffers \
+    libsecp256k1 \
+    libb2 \
+    zstd \
+    libressl \
+    curl
 
-# Copy binary and libraries from builder
+# Copy binary from builder
 COPY --from=builder /build/strfry /usr/local/bin/strfry
-RUN chmod +x /usr/local/bin/strfry
 
-# Copy libsecp256k1 from builder (ARM64 doesn't have apt package)
-COPY --from=builder /usr/lib/*/libsecp256k1.so* /usr/local/lib/
-RUN ldconfig
-
-# Copy default config from build context
+# Copy default config
 COPY strfry.aastar.conf /app/strfry.conf.default
 
 # Create data directory
-RUN mkdir -p /app/strfry-db && chown -R strfry:strfry /app
-
-# Switch to non-root user
-USER strfry
-WORKDIR /app
+RUN mkdir -p /app/strfry-db
 
 # Expose port
 EXPOSE 7777
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:7777/health || exit 1
+    CMD curl -f http://localhost:7777 || exit 1
 
 # Default command
 ENTRYPOINT ["strfry"]
