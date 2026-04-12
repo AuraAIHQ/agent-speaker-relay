@@ -1,10 +1,7 @@
 # Agent Speaker Relay - Dockerfile
 # Based on strfry with our custom configurations
 # 
-# This Dockerfile:
-# 1. Clones upstream strfry source code
-# 2. Builds it with our optimizations
-# 3. Includes our custom configuration files
+# Build context should be the root of our forked repository
 #
 # Build: docker build -f Dockerfile.agent-speaker -t mushroomdao/agent-speaker-relay:latest .
 # Run:   docker run -d -p 7777:7777 mushroomdao/agent-speaker-relay:latest
@@ -15,24 +12,25 @@ FROM ubuntu:22.04 as builder
 RUN apt-get update && apt-get install -y \
     git \
     build-essential \
-    cmake \
+    make \
     pkg-config \
     liblmdb-dev \
     libsecp256k1-dev \
     libssl-dev \
     zlib1g-dev \
-    curl \
+    libzstd-dev \
+    perl \
     && rm -rf /var/lib/apt/lists/*
 
-# Clone upstream strfry source (our fork only has configs, not the full source)
+# Copy source from build context (our forked repo)
 WORKDIR /build
-RUN git clone --recursive --depth 1 https://github.com/hoytech/strfry.git .
+COPY . .
+
+# Initialize submodules (golpe, negentropy)
+RUN git submodule update --init --recursive
 
 # Build strfry
-RUN mkdir -p build && \
-    cd build && \
-    cmake .. -DCMAKE_BUILD_TYPE=Release && \
-    make -j$(nproc)
+RUN make -j$(nproc)
 
 # Runtime image
 FROM ubuntu:22.04
@@ -40,14 +38,12 @@ FROM ubuntu:22.04
 # Install runtime dependencies
 RUN apt-get update && apt-get install -y \
     liblmdb0 \
+    libsecp256k1-1 \
     libssl3 \
     zlib1g \
+    libzstd1 \
     curl \
     && rm -rf /var/lib/apt/lists/*
-
-# Copy libraries from builder
-COPY --from=builder /usr/lib/*/libsecp256k1.so* /usr/local/lib/
-RUN ldconfig
 
 # Create non-root user
 RUN useradd -m -s /bin/bash strfry
@@ -56,8 +52,7 @@ RUN useradd -m -s /bin/bash strfry
 COPY --from=builder /build/build/strfry /usr/local/bin/strfry
 RUN chmod +x /usr/local/bin/strfry
 
-# Copy our custom configuration (from build context)
-# This allows users to override with their own config via volume mount
+# Copy default config from build context
 COPY strfry.aastar.conf /app/strfry.conf.default
 
 # Create data directory
